@@ -66,7 +66,7 @@ for i in range(0, Num_plantings): #this loop cycles through all of the plantings
         Soil_Array_in = Soil_Array.loc[(Soil_Array['Field num']==P.FieldNum[i])]
         Wetting_Array_in = WettingArray.loc[(WettingArray['Wetting_fractions_number']==P.WettingFractionsNum[i])]
         ETfrac_Array_in = ET_frac_Array.loc[(ET_frac_Array['ET_fractions_number']==P.ETFractionsNum[i])]
-        # Output_Array_in = Output_Array.loc[(Output_Array['Planting num']==P.PlantingNum[i]) & (Output_Array['Date']==(P.StartDate[i]- timedelta(days = 1)))]
+        #Output_Array_in = Output_Array.loc[(Output_Array['Planting num']==P.PlantingNum[i]) & (Output_Array['Date']==(P.StartDate[i]- timedelta(days = 1)))]
         # Output_Layer_Array_in = Output_Layer_Array.loc[(Output_Layer_Array['Planting num']==P.PlantingNum[i]) & (Output_Layer_Array['Date']==(P.StartDate[i]- timedelta(days = 1)))] 
         Irrigation_Array_in = Irrigation_Array.loc[(Irrigation_Array['Irr_num']==P.IrrNum[i])]
         ET_Daily_Array_in = ET_Daily_Array.loc[(ET_Daily_Array['Planting num']==P.PlantingNum[i])]                                                                                                          
@@ -79,7 +79,7 @@ for i in range(0, Num_plantings): #this loop cycles through all of the plantings
               Soil_Array_in, #reads in the soil layer parameters from the layer_data table for the loc ation
               ETfrac_Array_in,
               Wetting_Array_in,
-              # Output_Array_in,
+              #Output_Array_in,
               # Output_Layer_Array_in,
               Irrigation_Array_in,
               ET_Daily_Array_in,
