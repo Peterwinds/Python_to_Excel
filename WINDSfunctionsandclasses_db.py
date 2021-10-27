@@ -8,7 +8,9 @@ import pandas as pd
 import numpy as np
 import datetime
 import matplotlib.pyplot as plt
-
+import pymysql
+pymysql.install_as_MySQLdb()
+from sqlalchemy import create_engine
 
 def hg(a, b, C, z):
     value = 1
@@ -82,6 +84,8 @@ class plantings:
         self.EndDate = PlantingArray['Date end']                   #The number of days ahead of the present day (integer) for which the model should predict growth, water use, and irrigations
         self.FieldNum = PlantingArray['Field num']                                #The long random identifier that represents the field, for example, 9a649ac3a4353ffe6d67fdad0c6bf3a9
         self.FieldNameP = PlantingArray['Field name']                             #The name of the field (text), which normally includes the owner and field, such as GaryField1
+        self.SoilLayerNum = PlantingArray['Soil layer set num']                                #The long random identifier that represents the field, for example, 9a649ac3a4353ffe6d67fdad0c6bf3a9
+        self.SoilLayerName = PlantingArray['Soil layer set name']                             #The name of the field (text), which normally includes the owner and field, such as GaryField1
         self.AccountNum = PlantingArray['Account name']                              #The long random identifier that represents the owner, for example, 9a649ac3a4353ffe6d67fdad0c6bf3a9
         self.AccountNameP = PlantingArray['Account name']        #The number of locations (integer) that are modeled in an individual planting
         self.CropNum = PlantingArray['Crop num']                         #The name of the crop (text string), which initializes the following parameters, for example, GuayuleAZ2Spring
@@ -259,7 +263,7 @@ class fields:
 class soil:
     def __init__(self, SoilArray):
         SoilArray = SoilArray.sort_values('Layer')
-        self.FieldNum = np.array(SoilArray['Field num'])                            #The long random identifier that represents the field, for example, 9a649ac3a4353ffe6d67fdad0c6bf3a9
+        self.SoilLayerNum = np.array(SoilArray['Soil layer set num'])                            #The long random identifier that represents the field, for example, 9a649ac3a4353ffe6d67fdad0c6bf3a9
         self.LayerNumber = np.array(SoilArray['Layer'])
         self.Depth = np.array(SoilArray['Depth'])  
         self.InitWC = SoilArray['InitWC']
@@ -379,9 +383,9 @@ class status:
         self.Nitrogen_Start = np.zeros(len(Status_Array)+1)                              #Readily available water from the top of profile down to and including the layer, m, decimal, 8 digits
 
         for k in range(1, int(self.Num_layers) + 2):
-            self.Water_Start[k] = Status_Array['InitWC'].loc[Status_Array['Layer']==k]
-            self.Salinity_Start[k] = Status_Array['ECe_init'].loc[Status_Array['Layer']==k]
-            self.Nitrogen_Start[k] = Status_Array['Initial_soil_N'].loc[Status_Array['Layer']==k]
+            self.Water_Start[k] = Status_Array['InitWC'].loc[(Status_Array['Layer']==k) & (Status_Array['Planting num'] == self.PlantingNum)]
+            self.Salinity_Start[k] = Status_Array['ECe_init'].loc[(Status_Array['Layer']==k) & (Status_Array['Planting num'] == self.PlantingNum)]
+            self.Nitrogen_Start[k] = Status_Array['Initial_soil_N'].loc[(Status_Array['Layer']==k) & (Status_Array['Planting num'] == self.PlantingNum)]
                     
 class output:
     def __init__(self):
@@ -408,6 +412,7 @@ class output:
         self.ET_refO = np.zeros(self.NumDaysInc)
         self.Ky = np.zeros(self.NumDaysInc)                           #The daily crop sensitivity to water stress
         self.Depletion_total = np.zeros(self.NumDaysInc)  #The depth of depletion, mm, decimal 8 digits
+        self.Allowable_depletion_total = np.zeros(self.NumDaysInc)
         self.Percent_depletion_total = np.zeros(self.NumDaysInc) #The percent depletion, percentage, decimal 8 digits
         self.Irrigation = np.zeros(self.NumDaysInc)           #The depth of irrigation applied, mm, decimal 8 digits
         self.Total_Rain_plus_irrigation = np.zeros(self.NumDaysInc)           #The depth of irrigation applied, mm, decimal 8 digits
@@ -793,7 +798,8 @@ class model(plantings, weather, fields, status, soil, ET_fractions, Wetting_frac
             for k in range(self.Num_layers + 1, BL - 1, -1):
                 self.Percent_depletion[j][k] = (self.FC[k] - self.WC[j-1][k]) /(self.FC[k] - self.PWP[k]) * 100
                 self.Depletion_total[j - 1] = self.Depletion_total[j - 1] + (self.FC[k] - self.WC[j - 1][k]) * self.dz[k] *  self.Fw_y[k]
-            self.Percent_depletion_total[j-1] = self.Depletion_total[j-1] / self.Total_TAW_Fw[j][BL] * 100      
+            self.Percent_depletion_total[j-1] = self.Depletion_total[j-1] / self.Total_TAW_Fw[j][BL] * 100
+            self.Allowable_depletion_total[j-1] = self.Total_TAW_Fw[j-1][BL]*self.Ps[j-1]
             if self.Neglect_upper_layer_in_depletion_calc == 1:
                 self.Percent_depletion_total[j - 1] = (self.Depletion_total[j - 1] - (self.FC[self.Num_layers + 1] - self.WC[j - 1][self.Num_layers + 1]) * self.dz[self.Num_layers + 1] * self.Fw_y[self.Num_layers + 1]) / (self.Total_TAW_Fw[j][BL] - self.TAW[self.Num_layers + 1] * self.Fw_y[self.Num_layers + 1]) * 100
             if self.adjust_P == 1:
@@ -1322,10 +1328,10 @@ class model(plantings, weather, fields, status, soil, ET_fractions, Wetting_frac
                                               'TotalDen', 'TotalFer', 'TotalUpt', 'UptakeReq', 'TotalNit', 'TotalNitAccum', 'NitAve', 'NOptimalLow', 'NOptimalHigh', 'CumMin', 'CumDen', 
                                               'CumFer', 'CumUpt', 'CumIrrN', 'CumDrnN', 'CumChangeN'])                 
         
-        temp_Excel_output_to_sheets = pd.DataFrame(columns = ['DAP', 'Date', 'Planting_num',	'Planting_name', 'Field_name',	'Account_name', 
-                                                    'Crop_name',	'Crop_height', 'Root', 'blank1', 'FEW', 'Kcb used', 'Ke', 'Evap (mm)',	
-                                                    'Transpiration (mm)', 'ET (mm)', 'Pot transpiration (mm)', 'Cumulative potential ET (mm)',	
-                                                    'Cumulative actual ET (mm)','Reference ET (mm)','one minus C', 'blank2','DOY','WC L1',
+        temp_Excel_output_to_sheets = pd.DataFrame(columns = ['DAP', 'Date', 'Planting_year', 'PlantingNum','Planting_name', 'Field_name', 'Account_name', 
+                                                    'Crop_name', 'Crop_height', 'FEW', 'KcbUsed', 'Ke', 'Evap',	
+                                                    'Transpiration', 'ET', 'PotTranspiration', 'CumulativePotentialET',	
+                                                    'CumulativeActualET','ReferenceET','oneminusC', 'blank1', 'DOY','WC L1',
                                                     'WC L2', 'WC L3', 'WC L4', 	'WC L5', 'WC L6', 'WC L7', 'WC L8', 'WC L9', 'WC L10', 'WC L11', 
                                                     'WC L12', 'WC L13', 'blank3', 'Dep L1', 'Dep L2', 'Dep L3', 'Dep L4', 'Dep L5', 'Dep L6',
                                                     'Dep L7', 'Dep L8', 'Dep L9', 'Dep L10', 'Dep L11', 'Dep L12', 'Dep L13', 'blank4',
@@ -1334,9 +1340,10 @@ class model(plantings, weather, fields, status, soil, ET_fractions, Wetting_frac
                                                     'Inf L4', 'Inf L5', 'Inf L6', 'Inf L7', 'Inf L8', 'Inf L9', 'Inf L10', 'Inf L11',
                                                     'Inf L12', 'Inf L13', 'blank6', 'Pdep L1', 'Pdep L2', 'Pdep L3', 'Pdep L4',
                                                     'Pdep L5', 'Pdep L6', 'Pdep L7', 'Pdep L8', 'Pdep L9', 'Pdep L10', 'Pdep L11',
-                                                    'Pdep L12', 'Pdep L13', 'blank7', 'zwt', 'Eq._Max (elev, m)', 'Eq. Max number',
-                                                    'Irrigation (mm) + Rain (mm)', 'Leaching (mm)',	'Depth difference (mm)', 'ET (mm)',
-                                                    'Sum of sources and sinks'])              
+                                                    'Pdep L12', 'Pdep L13', 'blank7', 'blank8', 'blank9', 'blank10', 'blank11', 'zwt', 'EqMax', 'EqMaxNumber',
+                                                    'IrrigationPlusRain', 'Leaching',	'DepthDifference', 'ET_neg',
+                                                    'SumSourcesSinks', 'blank12', 'Root', 'AllowableDepletion', 'ActualDepletion', 'PercentDepletion',
+                                                    'IrrigationDepth', 'MAD_fraction', 'Rain'])              
 
         a = self.StartDate
         a=a.replace('-','') 
@@ -1352,21 +1359,23 @@ class model(plantings, weather, fields, status, soil, ET_fractions, Wetting_frac
         DAP =  int(self.StartDOY - self.PlantingDOY - 1)
         DAPlist=[]
         planting_number = []
+        planting_year = []
         planting_name = []
         field_name = []
         account_name = []
         crop_name = []
         for x in list (range(numdays)):
             DAPlist.append(DAP+x)
+            planting_year.append(self.PlantingYear)
             planting_number.append(self.PlantingNum)
             planting_name.append(self.PlantingName)
             field_name.append(self.FieldNameP)
             account_name.append(self.AccountNameP)
             crop_name.append(self.CropName)
-
         temp_Excel_output_to_sheets['DAP']=DAPlist
         temp_Excel_output_to_sheets['Date']=dateList
-        temp_Excel_output_to_sheets['Planting_num']=planting_number
+        temp_Excel_output_to_sheets['Planting_year']=planting_year
+        temp_Excel_output_to_sheets['PlantingNum']=planting_number
         temp_Excel_output_to_sheets['Planting_name'] = planting_name
         temp_Excel_output_to_sheets['Field_name'] = field_name
         temp_Excel_output_to_sheets['Account_name'] = account_name
@@ -1375,17 +1384,16 @@ class model(plantings, weather, fields, status, soil, ET_fractions, Wetting_frac
         temp_Excel_output_to_sheets['Root'] = self.Root[1:self.NumDaysInc - 1]
         temp_Excel_output_to_sheets['blank1'] = np.zeros(self.NumDaysInc-2)
         temp_Excel_output_to_sheets['FEW'] = self.Crop_height[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Kcb_used'] = self.Ke[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['KcbUsed'] = self.Kcb[1:self.NumDaysInc - 1]
         temp_Excel_output_to_sheets['Ke'] = self.Ke[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Evap (mm)'] = self.E[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Transpiration (mm)'] = self.ET_trans[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['ET (mm)'] = self.ET[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Pot transpiration (mm)'] = self.ET_pot[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Cumulative Potential ET (mm)'] = self.ETcum[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Cumulative actual ET (mm)'] = self.ETcum[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Reference ET (mm)'] = self.ET_0[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['one minus C'] = self.Ky[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['blank2'] = np.zeros(self.NumDaysInc-2)
+        temp_Excel_output_to_sheets['Evap'] = self.E[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['Transpiration'] = self.ET_trans[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['ET'] = self.ET[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['PotTranspiration'] = self.ET_pot[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['CumulativePotentialET'] = self.ETcum[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['CumulativeActualET'] = self.ETcum[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['ReferenceET'] = self.ET_0[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['oneminusC'] = self.Ky[1:self.NumDaysInc - 1]
         temp_Excel_output_to_sheets['DOY'] = self.DOY[1:self.NumDaysInc - 1]
         for k in range(1,13):
             layer_name = 'WC L' + str(k)
@@ -1438,32 +1446,46 @@ class model(plantings, weather, fields, status, soil, ET_fractions, Wetting_frac
             else:
                 temp_Excel_output_to_sheets[layer_name] = np.zeros(self.NumDaysInc - 2)
         temp_Excel_output_to_sheets['blank7'] = np.zeros(self.NumDaysInc-2)        
+        temp_Excel_output_to_sheets['blank8'] = np.zeros(self.NumDaysInc-2)        
+        temp_Excel_output_to_sheets['blank9'] = np.zeros(self.NumDaysInc-2)        
+        temp_Excel_output_to_sheets['blank10'] = np.zeros(self.NumDaysInc-2)        
+        temp_Excel_output_to_sheets['blank11'] = np.zeros(self.NumDaysInc-2)        
         temp_Excel_output_to_sheets['zwt'] = self.Equilibrium_Max[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Eq._Max (elev, m)'] = self.zu_Eq_Max[1:self.NumDaysInc - 1]
-        temp_Excel_output_to_sheets['Eq. Max number'] = self.Irrigation[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['EqMax'] = self.zu_Eq_Max[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['EqMaxNumber'] = self.Irrigation[1:self.NumDaysInc - 1]
         for i in range(1,self.NumDaysInc - 1):
             self.Irrigation_plus_rain[i] = self.Irrigation[i] + self.Rain_Infilt[i]
-        temp_Excel_output_to_sheets['Irrigation (mm) + Rain (mm)'] = self.Irrigation_plus_rain[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['IrrigationPlusRain'] = self.Irrigation_plus_rain[1:self.NumDaysInc - 1]
         for i in range(0, self.NumDaysInc - 2):
             a[i] = self.Infilt[i][1]
-        temp_Excel_output_to_sheets['Leaching (mm)'] = a
+        temp_Excel_output_to_sheets['Leaching'] = a
         for i in range(1,self.NumDaysInc - 1):
             for k in range(1, self.Num_layers + 2):
                 self.Sum_depths[i] = self.Sum_depths[i] + self.WC[i][k] * self.dz[k] * self.Fw[k]
             self.Difference[i] = 1000*(self.Sum_depths[i] - self.Sum_depths[i-1])
-        temp_Excel_output_to_sheets['Depth difference (mm)'] = self.Difference[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['DepthDifference'] = self.Difference[1:self.NumDaysInc - 1]
         for i in range(1,self.NumDaysInc - 1):
             self.ET_total[i] = -(self.ET_trans[i] + self.E_wet[i])
-        temp_Excel_output_to_sheets['ET (mm)'] = self.ET_total[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['ET_neg'] = self.ET_total[1:self.NumDaysInc - 1]
         for i in range(1,self.NumDaysInc - 1):
             self.Sum_sources_and_sinks[i] = self.ET_trans[i] - self.Infilt[i][1] * 1000 + self.Irrigation[i] + self.Rain_Infilt[i]
-        temp_Excel_output_to_sheets['Sum of sources and sinks'] = self.Sum_sources_and_sinks[1:self.NumDaysInc - 1]
-
+        temp_Excel_output_to_sheets['SumSourcesSinks'] = self.Sum_sources_and_sinks[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['blank12'] = np.zeros(self.NumDaysInc-2)        
+        temp_Excel_output_to_sheets['Root'] = self.Root[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['AllowableDepletion'] = self.Allowable_depletion_total[1:self.NumDaysInc - 1]*1000
+        temp_Excel_output_to_sheets['ActualDepletion'] = self.Depletion_total[1:self.NumDaysInc - 1]*1000
+        temp_Excel_output_to_sheets['PercentDepletion'] = self.Percent_depletion_total[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['IrrigationDepth'] = self.Irrigation[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['MAD_fraction'] = self.Ps[1:self.NumDaysInc - 1]
+        temp_Excel_output_to_sheets['Rain'] = self.wet_Rain_Infilt[1:self.NumDaysInc - 1]
         
-        writer = pd.ExcelWriter('output_test4.xlsx')
-        temp_Excel_output_to_sheets.to_excel(writer, 'Output2')
+        writer = pd.ExcelWriter('WINDS_database_format6.xlsx')
+        temp_Excel_output_to_sheets.to_excel(writer, 'Output' + str(self.PlantingNum))
         writer.save()
-        #            temp_output.to_csv('PythonExport3.csv',sep=',')
+        
+        # db=create_engine('mysql://UofABEWINDS:WINDSAWSPort2020@windsdatabase-1.cdzagwevzppe.us-west-1.rds.amazonaws.com:3306/winds_test')
+        
+        # temp_Excel_output_to_sheets.to_sql('OutputWebpage_copy', con=db, if_exists='append', index = 0)
         
         plt.figure(1)
         plt.plot(self.WC)

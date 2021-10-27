@@ -13,7 +13,6 @@ from sqlalchemy import create_engine
 pathprefix='/home/ecoslacker/Documents/WINDS_Data/'
 # sys.path.append(pathprefix)
 
-# db=create_engine('mysql://UofABEWINDS:WINDSAWSPort2020@windsdatabase-1.cdzagwevzppe.us-west-1.rds.amazonaws.com:3306/winds_test')
 
 # #======================Block 0: Adding Libraries=============================
 
@@ -37,12 +36,12 @@ pathprefix='/home/ecoslacker/Documents/WINDS_Data/'
 #======================Block 0: Adding Libraries=============================
 
 
-excel_path = 'WINDS_database_format3.xlsm' 
+excel_path = 'WINDS_database_format7.xlsm' 
 
 Planting_Array=pd.read_excel(excel_path, sheet_name = 'Plantings')  #Reads all data from mysql db
 Field_Array=pd.read_excel(excel_path, sheet_name = 'Fields')
 Status_Array=pd.read_excel(excel_path, sheet_name = 'Status')
-Soil_Array=pd.read_excel(excel_path, sheet_name = 'Field soil layers')
+Soil_Array=pd.read_excel(excel_path, sheet_name = 'Soil layers')
 Irrigation_Array=pd.read_excel(excel_path, sheet_name = 'Irrigation')
 ET_Daily_Array=pd.read_excel(excel_path, sheet_name = 'ET_daily')
 RS_Daily_Array=pd.read_excel(excel_path, sheet_name = 'RS_daily')
@@ -54,7 +53,7 @@ Status_Array = pd.read_excel(excel_path, sheet_name = 'Status')
 #excel_path = pathprefix + 'WINDS guayule_guarNM.xlsx' 
 #excel_output_path = pathprefix + 'output_test3.xlsx' 
 
-import WINDSfunctionsandclasses_Excel2  as wmf
+import WINDSfunctionsandclasses_db  as wmf
 P = wmf.plantings(Planting_Array) #This sets up a planting object called P with all of the plantings and their associated information
 Num_plantings = len(P.PlantingDate) #This is the total number of plantings in the database based on the length of the planting fields.
 for i in range(0, Num_plantings): #this loop cycles through all of the plantings
@@ -64,7 +63,7 @@ for i in range(0, Num_plantings): #this loop cycles through all of the plantings
         Weather_Array_in = WeatherArray.loc[(WeatherArray['Date'] >= dt.strptime(P.StartDate[i], '%Y-%m-%d')-timedelta(days=1))]
         Status_in = Status_Array.loc[Status_Array['Planting num']==P.PlantingNum[i]]
         Field_Array_in = Field_Array.loc[(Field_Array['Field num']==P.FieldNum[i])]
-        Soil_Array_in = Soil_Array.loc[(Soil_Array['Field num']==P.FieldNum[i])]
+        Soil_Array_in = Soil_Array.loc[(Soil_Array['Soil layer set num']==P.SoilLayerNum[i])]
         Wetting_Array_in = WettingArray.loc[(WettingArray['Wetting_fractions_number']==P.WettingFractionsNum[i])]
         ETfrac_Array_in = ET_frac_Array.loc[(ET_frac_Array['ET_fractions_number']==P.ETFractionsNum[i])]
         Irrigation_Array_in = Irrigation_Array.loc[(Irrigation_Array['Irr_num']==P.IrrNum[i])]
